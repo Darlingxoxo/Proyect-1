@@ -1,0 +1,4 @@
+Flask
+pyotp
+
+install it with pip install -r requirements.txt
