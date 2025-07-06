@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>Iniciar Sesión</title>
+</head>
+<body>
+    <h2>Iniciar Sesión</h2>
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <ul>
+                {% for message in messages %}
+                    <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+    <form method="POST">
+        <input type="text" name="username" placeholder="Usuario" required><br>
+        <input type="password" name="password" placeholder="Contraseña" required><br>
+        <input type="text" name="token" placeholder="Código MFA" required><br>
+        <button type="submit">Iniciar Sesión</button>
+    </form>
+</body>
+</html>

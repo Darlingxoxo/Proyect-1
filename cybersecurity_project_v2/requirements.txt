@@ -1,0 +1,6 @@
+# requirements.txt
+Flask
+Flask-Login
+qrcode
+pillow
+pyotp
