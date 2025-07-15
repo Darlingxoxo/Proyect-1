@@ -1,12 +1,23 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+import pyotp  # Import pyotp before using it
 import sqlite3
-import pyotp
 import qrcode
 import io
 import base64
 import smtplib
+
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
+# Admin credentials
+ADMIN_USERNAME = 'admin'
+ADMIN_PASSWORD = 'admin123'
+ADMIN_OTP_SECRET = pyotp.random_base32()
+
+# Email config
+ADMIN_EMAIL = 'paul.zerpa@utp.ac.pa'
+ADMIN_EMAIL_PASSWORD = '123'  # Use an App Password if you're using Gmail
+
+# Flask app setup
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
@@ -14,10 +25,6 @@ app.secret_key = 'supersecretkey'
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
-
-# Email configuration
-ADMIN_EMAIL = 'youremail@gmail.com'  # Put your email
-ADMIN_PASSWORD = 'yourpassword'      # Gmail App Password (recommended, don't use your real password)
 
 # User model
 class User(UserMixin):
@@ -27,7 +34,7 @@ class User(UserMixin):
         self.password = password
         self.otp_secret = otp_secret
 
-# Load user for Flask-Login
+# Load user from database
 @login_manager.user_loader
 def load_user(user_id):
     conn = sqlite3.connect('database.db')
@@ -39,7 +46,7 @@ def load_user(user_id):
         return User(id=user[0], username=user[1], password=user[2], otp_secret=user[3])
     return None
 
-# Initialize database
+# Init DB
 def init_db():
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
@@ -113,20 +120,28 @@ def login():
         user = cursor.fetchone()
         conn.close()
 
-        if user and password == user[2]:
-            totp = pyotp.TOTP(user[3])
-            if totp.verify(token):
-                user_obj = User(id=user[0], username=user[1], password=user[2], otp_secret=user[3])
+        if user:
+            user_id, db_username, db_password, otp_secret = user
+            totp = pyotp.TOTP(otp_secret)
+
+            if password == db_password and totp.verify(token):
+                user_obj = User(id=user_id, username=db_username, password=db_password, otp_secret=otp_secret)
                 login_user(user_obj)
 
-                if user_ip != '127.0.0.1':
-                    send_alert_email(username, user_ip)
+                # Send email alert (you could add IP tracking to avoid spam)
+                send_alert_email(username, user_ip)
 
-                return redirect(url_for('dashboard'))
+                if username == ADMIN_USERNAME:
+                    return redirect(url_for('admin_dashboard'))
+                else:
+                    return redirect(url_for('dashboard'))
             else:
-                flash('Código MFA incorrecto.')
+                flash("Credenciales o token incorrectos.")
         else:
-            flash('Usuario o contraseña incorrectos.')
+            flash("Usuario no encontrado.")
+
+        return redirect(url_for('login'))
+
     return render_template('login.html')
 
 @app.route('/dashboard')
@@ -134,18 +149,30 @@ def login():
 def dashboard():
     return render_template('dashboard.html', username=current_user.username)
 
+@app.route('/admin')
+@login_required
+def admin_dashboard():
+    if current_user.username != ADMIN_USERNAME:
+        return redirect(url_for('dashboard'))
+
+    return '''
+    <h2>Bienvenido Administrador</h2>
+    <p>Este es el panel exclusivo del administrador.</p>
+    <a href="/logout">Cerrar Sesión</a>
+    '''
+
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('index'))
 
-# Email alert function
+# Email alert
 def send_alert_email(username, ip_address):
     try:
         with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
             smtp.starttls()
-            smtp.login(ADMIN_EMAIL, ADMIN_PASSWORD)
+            smtp.login(ADMIN_EMAIL, ADMIN_EMAIL_PASSWORD)
             subject = 'Alerta de Seguridad - Bufete JurisPana'
             body = f'Se detectó un intento de inicio de sesión desde una IP no reconocida ({ip_address}) para el usuario: {username}.'
             msg = f'Subject: {subject}\n\n{body}'
@@ -155,3 +182,5 @@ def send_alert_email(username, ip_address):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
